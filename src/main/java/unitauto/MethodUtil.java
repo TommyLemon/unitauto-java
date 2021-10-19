@@ -26,6 +26,11 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.sql.Timestamp;
+import java.util.AbstractCollection;
+import java.util.AbstractList;
+import java.util.AbstractMap;
+import java.util.AbstractSequentialList;
+import java.util.AbstractSet;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -33,13 +38,23 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.SortedSet;
+import java.util.Stack;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.Vector;
 import java.util.concurrent.TimeoutException;
 
 import com.alibaba.fastjson.JSON;
@@ -105,6 +120,7 @@ public class MethodUtil {
 	public static int CODE_SERVER_ERROR = 500;
 	public static String MSG_SUCCESS = "success";
 
+	public static String KEY_REUSE = "reuse";
 	public static String KEY_UI = "ui";
 	public static String KEY_TIME = "time";
 	public static String KEY_TIMEOUT = "timeout";
@@ -224,12 +240,28 @@ public class MethodUtil {
 		CLASS_MAP.put(Array[].class.getSimpleName(), Array[].class);
 
 		CLASS_MAP.put(Collection.class.getSimpleName(), Collection.class);//不允许指定<T>
+		CLASS_MAP.put(AbstractCollection.class.getSimpleName(), AbstractCollection.class);//不允许指定<T>
 		CLASS_MAP.put(List.class.getSimpleName(), List.class);//不允许指定<T>
+		CLASS_MAP.put(AbstractList.class.getSimpleName(), AbstractList.class);//不允许指定<T>
 		CLASS_MAP.put(ArrayList.class.getSimpleName(), ArrayList.class);//不允许指定<T>
+		CLASS_MAP.put(AbstractSequentialList.class.getSimpleName(), AbstractSequentialList.class);//不允许指定<T>
+		CLASS_MAP.put(LinkedList.class.getSimpleName(), LinkedList.class);//不允许指定<T>
+		CLASS_MAP.put(Vector.class.getSimpleName(), Vector.class);//不允许指定<T>
+		CLASS_MAP.put(Stack.class.getSimpleName(), Stack.class);//不允许指定<T>
 		CLASS_MAP.put(Map.class.getSimpleName(), Map.class);//不允许指定<T>
+		CLASS_MAP.put(AbstractMap.class.getSimpleName(), AbstractMap.class);//不允许指定<T>
 		CLASS_MAP.put(HashMap.class.getSimpleName(), HashMap.class);//不允许指定<T>
+		CLASS_MAP.put(LinkedHashMap.class.getSimpleName(), LinkedHashMap.class);//不允许指定<T>
+		CLASS_MAP.put(SortedMap.class.getSimpleName(), SortedMap.class);//不允许指定<T>
+		CLASS_MAP.put(NavigableMap.class.getSimpleName(), NavigableMap.class);//不允许指定<T>
+		CLASS_MAP.put(TreeMap.class.getSimpleName(), TreeMap.class);//不允许指定<T>
 		CLASS_MAP.put(Set.class.getSimpleName(), Set.class);//不允许指定<T>
+		CLASS_MAP.put(AbstractSet.class.getSimpleName(), AbstractSet.class);//不允许指定<T>
 		CLASS_MAP.put(HashSet.class.getSimpleName(), HashSet.class);//不允许指定<T>
+		CLASS_MAP.put(LinkedHashSet.class.getSimpleName(), LinkedHashSet.class);//不允许指定<T>
+		CLASS_MAP.put(SortedSet.class.getSimpleName(), SortedSet.class);//不允许指定<T>
+		CLASS_MAP.put(NavigableSet.class.getSimpleName(), NavigableSet.class);//不允许指定<T>
+		CLASS_MAP.put(TreeSet.class.getSimpleName(), TreeSet.class);//不允许指定<T>
 
 		CLASS_MAP.put(JSON.class.getSimpleName(), JSON.class);//必须有，Map中没有getLongValue等方法
 		CLASS_MAP.put(JSONObject.class.getSimpleName(), JSONObject.class);//必须有，Map中没有getLongValue等方法
@@ -307,41 +339,67 @@ public class MethodUtil {
 	/**执行方法
 	 * @param req :
 	 {
-	    "ui": false,  //放 UI 线程执行
-	    "timeout": 0,  //超时时间
-		"package": "apijson.demo.server",
-		"class": "DemoFunction",
+		"static": false,  //是否为静态方法，false 时可能会用 constructor & classArgs 来初始化一个类的实例或用 this 直接反序列化成一个类的实例
+		"ui": false,  //放 UI 线程执行，仅 Android 可用
+		"timeout": 0,  //超时时间
+		"package": "apijson.demo.server",  //被测方法所在的包名
+		"class": "DemoFunction",  //被测方法所在的类名
 		"constructor": "getInstance",  //如果是类似单例模式的类，不能用默认构造方法，可以自定义获取实例的方法，传参仍用 classArgs
-		"classArgs": [
-			null,
+		"classArgs": [  //构造方法的参数值，可以和 methodArgs 结构一样。这里用了简化形式，只传值不传类型，注意简化形式只能在所有值完全符合构造方法的类型定义时才可用
+			null,  
 			null,
 			0,
 			null
 		],
-		"method": "plus",
-		"methodArgs": [
+		"this": {  //当前类示例，和 constructor & classArgs 二选一
+			"type": "apijson.demo.server.model.User",  //不可缺省，且必须全称
+			"value": {  //User 的示例值，会根据 type 来转为 Java 类型，这里执行等价于 JSON.parseObject(JSON.toJSONString(value), User.class)
+				"id": 1,
+				"name": "Tommy"
+			}
+		},
+		"method": "plus",  //被测方法名
+		"methodArgs": [  //被测方法的参数值
 			{
-				"type": "Integer",  //可缺省，自动根据 value 来判断
+				"type": "Integer",  //Boolean, Integer, Number, String, JSONObject, JSONArray 都可缺省，自动根据 value 来判断
 				"value": 1
 			},
 			{
-				"type": "String",
+				"type": "String",  //可缺省，自动根据 value 来判断
 				"value": "APIJSON"
 			},
 			{
-				"type": "JSONObject",  //可缺省，JSONObject 已缓存到 CLASS_MAP
+				"type": "JSONObject",  //可缺省，JSONObject 已缓存到 CLASS_MAP，也可以写全称 com.alibaba.fastjson.JSONObject
 				"value": {}
 			},
 			{
-				"type": "apijson.demo.server.model.User",  //不可缺省，且必须全称
-				"value": {
-					"id": 1,
-					"name": "Tommy"
-				}
+				"type": "int[]",  //不可缺省，且必须全称
+				"value": [1, 2, 3]
+			},
+			{
+				"type": "java.util.List<apijson.demo.server.model.User>",  //不可缺省，且必须全称
+				"value": [  //TODO 未验证，可能需要解析 type，改用 JSON.parseArray(JSON.toJSONString(value), User.class)，或遍历和递归子项来逐个用 cast
+					{  //apijson.demo.server.model.User
+						"id": 1,
+						"name": "Tommy"
+					},
+					{  //apijson.demo.server.model.User
+						"id": 2,
+						"name": "Lemon"
+					}
+				]
 			},
 			{
 				"type": "android.content.Context",  //不可缺省，且必须全称
 				"reuse": true  //复用实例池 INSTANCE_MAP 里的
+			},
+			{
+			    "type": "unitauto.test.TestUtil$Callback",  //interface 示例，注意内部类用 $ 隔开外部类名和内部类名
+			    "value": {
+					"setData(D)": {  //回调方法签名
+					    "callback": true  //设置为最终回调方法，会自动等待它被调用，并自动记录回调的时间点和传入参数值
+					}
+			    }
 			}
 		]
 	 }
@@ -391,7 +449,7 @@ public class MethodUtil {
 
 			if (instance == null && static_ == false) {
 				if (StringUtil.isEmpty(cttName, true)) {
-					instance = INSTANCE_GETTER.getInstance(clazz, clsArgs, null);
+					instance = INSTANCE_GETTER.getInstance(clazz, clsArgs, req.getBoolean(KEY_REUSE));
 				}
 				else {
 					instance = getInvokeResult(clazz, null, cttName, clsArgs, null);
@@ -401,7 +459,7 @@ public class MethodUtil {
 			if (timeout < 0 || timeout > 60000) {
 				throw new IllegalArgumentException("参数 " + KEY_TIMEOUT + " 的值不合法！只能在 [0, 60000] 范围内！");
 			}
-			
+
 			if (timeout > 0) {
 				final Timer timer = new Timer();
 				timer.schedule(new TimerTask() {
@@ -412,12 +470,12 @@ public class MethodUtil {
 						catch (Throwable e) {
 							e.printStackTrace();
 						}
-						
+
 						completeWithError(pkgName, clsName, methodName, startTime, new TimeoutException("处理超时，应该在期望时间 " + timeout + "ms 内！"), listener);
 					}
 				}, timeout, Long.MAX_VALUE);
 			}
-			
+
 			invokeMethod(clazz, instance, pkgName, clsName, methodName, methodArgs, listener);
 
 			// 后端服务只允许在当前线程执行，只有客户端才允许设置在 UI 线程(主线程) 执行
@@ -808,8 +866,8 @@ public class MethodUtil {
 				Object value = args[i];
 
 				if (value instanceof InterfaceProxy || (type != null && type.isInterface())) {  // @interface 也必须代理  && type.isAnnotation() == false)) {  //如果这里不行，就 initTypesAndValues 给个回调
-					try {  //不能交给 initTypesAndValues 中 castValue2Type，否则会导致这里 TypeUtils.cast 抛异常 
-						InterfaceProxy proxy = value instanceof InterfaceProxy ? ((InterfaceProxy) value) : TypeUtils.cast(value, InterfaceProxy.class, new ParserConfig());
+					try {  //不能交给 initTypesAndValues 中 castValue2Type，否则会导致这里 cast 抛异常 
+						InterfaceProxy proxy = value instanceof InterfaceProxy ? ((InterfaceProxy) value) : cast(value, InterfaceProxy.class, ParserConfig.getGlobalInstance());
 						Set<Entry<String, Object>> set = proxy.entrySet();
 						if (set != null)  {
 							for (Entry<String, Object> e : set) {
@@ -828,7 +886,7 @@ public class MethodUtil {
 							}
 						}
 
-						args[i] = TypeUtils.cast(proxy, type, new ParserConfig());
+						args[i] = cast(proxy, type, ParserConfig.getGlobalInstance());
 						isSync = proxy.$_getCallbackMap().isEmpty();
 					}
 					catch (Throwable e) {
@@ -837,7 +895,7 @@ public class MethodUtil {
 				}
 				//始终需要 cast	 else {  //前面 initTypesAndValues castValue2Type = false
 				try {
-					args[i] = TypeUtils.cast(value, type, new ParserConfig());
+					args[i] = cast(value, type, ParserConfig.getGlobalInstance());
 				}
 				catch (Throwable e) {
 					e.printStackTrace();
@@ -984,7 +1042,7 @@ public class MethodUtil {
 
 			//			if (typeName != null && value != null && value.getClass().equals(CLASS_MAP.get(typeName)) == false) {
 			////				if ("double".equals(typeName)) {
-			//				value = TypeUtils.cast(value, CLASS_MAP.get(typeName), new ParserConfig());
+			//				value = cast(value, CLASS_MAP.get(typeName), ParserConfig.getGlobalInstance());
 			////				}
 			////				else if (PRIMITIVE_CLASS_MAP.containsKey(typeName)) {
 			////					value = JSON.parse(JSON.toJSONString(value));
@@ -1027,7 +1085,7 @@ public class MethodUtil {
 
 				if (castValue2Type) {
 					try {
-						value = TypeUtils.cast(value, type, new ParserConfig());
+						value = cast(value, type, ParserConfig.getGlobalInstance());
 					}
 					catch (Throwable e) {
 						e.printStackTrace();
@@ -1471,6 +1529,7 @@ public class MethodUtil {
 	//	private Class<?> getType(String name, Object value) throws ClassNotFoundException, IOException {
 	//		return getType(name, value, false);
 	//	}
+	@SuppressWarnings("unchecked")
 	public static Class<?> getType(String name, Object value, boolean defaultType) throws ClassNotFoundException, IOException {
 		Class<?> type = null;
 		if (isEmpty(name, true)) {  //根据值来自动判断
@@ -1483,7 +1542,9 @@ public class MethodUtil {
 		}
 		else {
 			int index = name.indexOf("<");
+			String child = null;
 			if (index >= 0) {
+				child = name.substring(index + 1, name.lastIndexOf(">"));
 				name = name.substring(0, index);
 			}
 
@@ -1495,6 +1556,51 @@ public class MethodUtil {
 				if (type != null) {
 					CLASS_MAP.put(name, type);
 				}
+			} else if (value != null && StringUtil.isEmpty(child, true) == false && "?".equals(child) == false && "Object".equals(child) == false && Collection.class.isAssignableFrom(type)) {
+				try {
+					// 传参进来必须是 Collection，不是就抛异常  value = cast(value, type, ParserConfig.getGlobalInstance());
+					Collection<?> c = (Collection<?>) value;
+					if (c != null && c.isEmpty() == false) {
+
+						@SuppressWarnings("rawtypes")
+						Collection nc;
+
+						if (AbstractSequentialList.class.isAssignableFrom(type)) {  // LinkedList
+							nc = new LinkedList<>();
+						} 
+						else if (Vector.class.isAssignableFrom(type)) {  // Stack
+							nc = new Stack<>();
+						} 
+						else if (List.class.isAssignableFrom(type)) {  // 写在最前，和 else 重合，但大部分情况下性能更好  // ArrayList
+							nc = new ArrayList<>(c.size());
+						}
+						else if (SortedSet.class.isAssignableFrom(type)) {  // TreeSet
+							nc = new TreeSet<>();
+						} 
+						else if (Set.class.isAssignableFrom(type)) {  // HashSet, LinkedHashSet
+							nc = new LinkedHashSet<>(c.size());
+						} 
+						else {  // List, ArrayList
+							nc = new ArrayList<>(c.size());
+						}
+
+						for (Object o : c) {
+							if (o != null) {
+								Class<?> ct = getType(child, o, true);
+								o = cast(o, ct, ParserConfig.getGlobalInstance());
+							}
+							nc.add(o);
+						}
+
+						// 改变不了外部的 value 值	value = nc;
+						c.clear();
+						c.addAll(nc);
+					}
+				}
+				catch (Throwable e) {
+					e.printStackTrace();
+				}
+
 			}
 		}
 
@@ -1503,6 +1609,47 @@ public class MethodUtil {
 		}
 
 		return type;
+	}
+
+	@SuppressWarnings("unchecked")
+	public static <T> T cast(Object obj, Class<T> type, ParserConfig config) {
+		if (type == null || obj == null || type.isAssignableFrom(obj.getClass())) {
+			return (T) obj;
+		}
+
+		if (Collection.class.isAssignableFrom(type)) {
+			Collection<?> c = (Collection<?>) obj;
+			
+			@SuppressWarnings("rawtypes")
+			Collection nc;
+
+			if (AbstractSequentialList.class.isAssignableFrom(type)) {  // LinkedList
+				nc = new LinkedList<>();
+			} 
+			else if (Vector.class.isAssignableFrom(type)) {  // Stack
+				nc = new Stack<>();
+			} 
+			else if (List.class.isAssignableFrom(type)) {  // 写在最前，和 else 重合，但大部分情况下性能更好  // ArrayList
+				nc = new ArrayList<>(c.size());
+			}
+			else if (SortedSet.class.isAssignableFrom(type)) {  // TreeSet
+				nc = new TreeSet<>();
+			} 
+			else if (Set.class.isAssignableFrom(type)) {  // HashSet, LinkedHashSet
+				nc = new LinkedHashSet<>(c.size());
+			} 
+			else {  // List, ArrayList
+				nc = new ArrayList<>(c.size());
+			}
+
+			for (Object o : c) {
+				nc.add(o);
+			}
+			
+			return (T) nc;
+		}
+		
+		return TypeUtils.cast(obj, type, config);
 	}
 
 	/**
@@ -1927,7 +2074,7 @@ public class MethodUtil {
 			}
 
 			try {
-				value = TypeUtils.cast(value, getType(type, value, true), new ParserConfig());
+				value = cast(value, getType(type, value, true), ParserConfig.getGlobalInstance());
 			}
 			catch (Throwable e) {
 				e.printStackTrace();
