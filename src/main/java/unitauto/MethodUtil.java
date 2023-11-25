@@ -230,6 +230,7 @@ public class MethodUtil {
 	public static String KEY_TIME_DETAIL = "time:start|duration|end";
 	public static String KEY_CLASS_ARGS = "classArgs";
 	public static String KEY_METHOD_ARGS = "methodArgs";
+	public static String KEY_ARGS = "args";
 	public static String KEY_CALLBACK = "callback";
 	public static String KEY_GLOBAL = "global";
 
@@ -533,6 +534,15 @@ public class MethodUtil {
 			Object this_ = req.get(KEY_THIS);
 			List<Argument> clsArgs = getArgList(req, KEY_CLASS_ARGS);
 			List<Argument> methodArgs = getArgList(req, KEY_METHOD_ARGS);
+			List<Argument> args_ = getArgList(req, KEY_ARGS);
+
+			if (methodArgs != null && args_ != null) {
+				throw new UnsupportedOperationException(KEY_METHOD_ARGS + " 和 " + KEY_ARGS + " 不能都传，最多传一个！");
+			}
+
+			if (methodArgs == null) {
+				methodArgs = args_;
+			}
 
 			Class<?> clazz = getInvokeClass(pkgName, clsName);
 			if (clazz == null) {
@@ -752,10 +762,13 @@ public class MethodUtil {
 		JSONArray arr = req == null ? null : JSON.parseArray(req.getString(arrKey));
 
 		List<Argument> list = null;
-		if (arr != null && arr.isEmpty() == false) {
+		if (arr != null) {
 			list = new ArrayList<>();
 			for (Object item : arr) {
-				if (item instanceof Boolean || item instanceof Number || item instanceof Collection) {
+				if (item instanceof Boolean || item instanceof Number || item instanceof Collection
+					|| (item instanceof Map && ((Map<?, ?>) item).containsKey(KEY_VALUE) == false
+						&& ((Map<?, ?>) item).get(KEY_TYPE) instanceof String == false)
+				) {
 					list.add(new Argument(null, item));
 				}
 				else if (item instanceof String) {
@@ -2116,7 +2129,10 @@ public class MethodUtil {
 		int index = className.indexOf("<");
 		if (index >= 0) {
 			className = className.substring(0, index);
+		} else if ("?".equals(className) || (className.length() == 1 && StringUtil.isBigName(className))) {
+			return Object.class;
 		}
+
 		//这个方法保证在 jar 包里能正常执行
 		Class<?> clazz = Class.forName(isEmpty(packageOrFileName, true) ? className : packageOrFileName.replaceAll("/", ".") + "." + className);
 		if (clazz != null) {
