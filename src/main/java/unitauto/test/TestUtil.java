@@ -87,6 +87,14 @@ public class TestUtil {
 		return arr;
 	}
 
+	protected static void sort(Number[] arr) {
+		Arrays.sort(arr);
+	}
+
+	private static void sort(String[] arr) {
+		Arrays.sort(arr);
+	}
+
 	public static TestBean findBean(TestBean[] beans, Long id) {
 		if (id == null || beans == null || beans.length <= 0) {
 			return null;

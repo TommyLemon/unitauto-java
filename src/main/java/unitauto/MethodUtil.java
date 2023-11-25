@@ -975,7 +975,16 @@ public class MethodUtil {
 			initTypesAndValues(methodArgs, types, args, true, false);
 		}
 
-		Method method = clazz.getMethod(methodName, types);
+		Method method = null;
+		try {
+			method = clazz.getMethod(methodName, types);
+		} catch (Throwable e) {
+			method = clazz.getDeclaredMethod(methodName, types);
+			if (method != null) { // JDK 9+  && method.trySetAccessible() == false) {
+				method.setAccessible(true);
+			}
+		}
+		final Method finalMethod = method;
 
 		final long[] startTime = new long[]{ System.currentTimeMillis() }; // 必须在 itemListener 前初始化，但又得在后面重新赋值以获得最准确的时间
 
@@ -985,14 +994,14 @@ public class MethodUtil {
 			public void complete(Object data, Method m, InterfaceProxy proxy, Object... extra) throws Exception {
 				long endTime = System.currentTimeMillis();
 				long duration = endTime - startTime[0];
-				Log.d(TAG, "getInvokeResult  " + method.toGenericString() + "; endTime = " + endTime + ";  duration = " + duration + ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n\n\n");
+				Log.d(TAG, "getInvokeResult  " + finalMethod.toGenericString() + "; endTime = " + endTime + ";  duration = " + duration + ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n\n\n");
 
 				if (listener == null) {
 					return;
 				}
 
 				JSONObject result = new JSONObject(true);
-				result.put(KEY_TYPE, trimType(method.getReturnType()));  //给 UnitAuto 共享用的 trimType(val.getClass()));
+				result.put(KEY_TYPE, trimType(finalMethod.getReturnType()));  //给 UnitAuto 共享用的 trimType(val.getClass()));
 				result.put(KEY_RETURN, data);
 
 				List<JSONObject> finalMethodArgs = null;
@@ -1084,11 +1093,15 @@ public class MethodUtil {
 			}
 		}
 
-		startTime[0] = System.currentTimeMillis();  // 排除前面初始化参数的最准确时间
-		Log.d(TAG, "getInvokeResult  " + method.toGenericString() + "; startTime = " + startTime[0] + "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n\n\n ");
-
 		Boolean b = listener == null ? null : listener.beforeCall(instance, method, types, args, globalInterfaceProxy);
+
+		startTime[0] = System.currentTimeMillis();  // 排除前面初始化参数的最准确时间
+		if (Log.DEBUG) {
+			Log.d(TAG, "getInvokeResult  " + method.toGenericString() + "; startTime = " + startTime[0] + "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n\n\n ");
+		}
+
 		Object val = b != null && b ? null : method.invoke(instance, args);
+
 		val = listener == null ? val : listener.afterCall(val, instance, method, types, args, globalInterfaceProxy);
 
 		if (isSync) {
