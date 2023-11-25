@@ -17,8 +17,6 @@ package unitauto;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.*;
-import java.security.cert.CertPath;
-import java.security.cert.CertificateFactory;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -994,7 +992,9 @@ public class MethodUtil {
 			public void complete(Object data, Method m, InterfaceProxy proxy, Object... extra) throws Exception {
 				long endTime = System.currentTimeMillis();
 				long duration = endTime - startTime[0];
-				Log.d(TAG, "getInvokeResult  " + finalMethod.toGenericString() + "; endTime = " + endTime + ";  duration = " + duration + ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n\n\n");
+				if (Log.DEBUG) {
+					Log.d(TAG, "getInvokeResult  " + finalMethod.toGenericString() + "; endTime = " + endTime + ";  duration = " + duration + ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n\n\n");
+				}
 
 				if (listener == null) {
 					return;
