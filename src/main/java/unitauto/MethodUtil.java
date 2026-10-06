@@ -383,13 +383,13 @@ public class MethodUtil {
 	/**获取方法列表
 	 * @param request :
 	{
-	"mock": true,
-	"query": 0,  // 0-数据，1-总数，2-全部
-	"package": "apijson.demo.server",
-	"class": "DemoFunction",
-	"method": "plus",
-	"types": ["Integer", "String", "com.alibaba.fastjson.JSONObject"]
-	//不返回的话，这个接口没意义		    "return": true,  //返回 class list，方便调试
+		"mock": true,
+		"query": 0,  // 0-数据，1-总数，2-全部
+		"package": "apijson.demo.server",
+		"class": "DemoFunction",
+		"method": "plus",
+		"types": ["Integer", "String", "com.alibaba.fastjson.JSONObject"]
+		// 不返回的话，这个接口没意义		    "return": true,  //返回 class list，方便调试
 	}
 	 * @return
 	 */
@@ -448,69 +448,73 @@ public class MethodUtil {
 	/**执行方法
 	 * @param req :
 	{
-	"static": false,  //是否为静态方法，false 时可能会用 constructor & classArgs 来初始化一个类的实例或用 this 直接反序列化成一个类的实例
-	"ui": false,  //放 UI 线程执行，仅 Android 可用
-	"timeout": 0,  //超时时间
-	"package": "apijson.demo.server",  //被测方法所在的包名
-	"class": "DemoFunction",  //被测方法所在的类名
-	"constructor": "getInstance",  //如果是类似单例模式的类，不能用默认构造方法，可以自定义获取实例的方法，传参仍用 classArgs
-	"classArgs": [  //构造方法的参数值，可以和 methodArgs 结构一样。这里用了简化形式，只传值不传类型，注意简化形式只能在所有值完全符合构造方法的类型定义时才可用
-	null,
-	null,
-	0,
-	null
-	],
-	"this": {  //当前类示例，和 constructor & classArgs 二选一
-	"type": "apijson.demo.server.model.User",  //不可缺省，且必须全称
-	"value": {  //User 的示例值，会根据 type 来转为 Java 类型，这里执行等价于 JSON.parseObject(JSON.toJSONString(value), User.class)
-	"id": 1,
-	"name": "Tommy"
-	}
-	},
-	"method": "plus",  //被测方法名
-	"methodArgs": [  //被测方法的参数值
-	{
-	"type": "Integer",  //Boolean, Integer, Number, String, JSONObject, JSONArray 都可缺省，自动根据 value 来判断
-	"value": 1
-	},
-	{
-	"type": "String",  //可缺省，自动根据 value 来判断
-	"value": "APIJSON"
-	},
-	{
-	"type": "JSONObject",  //可缺省，JSONObject 已缓存到 CLASS_MAP，也可以写全称 com.alibaba.fastjson.JSONObject
-	"value": {}
-	},
-	{
-	"type": "int[]",  //不可缺省，且必须全称
-	"value": [1, 2, 3]
-	},
-	{
-	"type": "java.util.List<apijson.demo.server.model.User>",  //不可缺省，且必须全称
-	"value": [  //TODO 未验证，可能需要解析 type，改用 JSON.parseArray(JSON.toJSONString(value), User.class)，或遍历和递归子项来逐个用 cast
-	{  //apijson.demo.server.model.User
-	"id": 1,
-	"name": "Tommy"
-	},
-	{  //apijson.demo.server.model.User
-	"id": 2,
-	"name": "Lemon"
-	}
-	]
-	},
-	{
-	"type": "android.content.Context",  //不可缺省，且必须全称
-	"reuse": true  //复用实例池 INSTANCE_MAP 里的
-	},
-	{
-	"type": "unitauto.test.TestUtil$Callback",  //interface 示例，注意内部类用 $ 隔开外部类名和内部类名
-	"value": {
-	"setData(D)": {  //回调方法签名
-	"callback": true  //设置为最终回调方法，会自动等待它被调用，并自动记录回调的时间点和传入参数值
-	}
-	}
-	}
-	]
+		"static": false, // 是否为静态方法，false 时可能会用 constructor & classArgs 来初始化一个类的实例或用 this 直接反序列化成一个类的实例
+		"ui": false, // 放 UI 线程执行，仅 Android 可用
+		"timeout": 0, // 超时时间
+		"try": true, // 是否尝试，可以绕过 private/protected/package 等非 public 的禁止调用限制
+		"reuse": "testcase1", // 是否复用实例，不同 value 用来隔离不同的用例、避免冲突等
+		"package": "apijson.demo.server", // 被测方法所在的包名
+		"class": "DemoFunctionParser", // 被测方法所在的类名
+		"field": "INSTANCE", // 单例静态成员名称，例如 class TestSingleton { private static final TestSingleton INSTANCE = new TestSingleton(); }
+		"constructor": "getInstance", // 如果是类似单例模式的类，不能用默认构造方法，可以自定义获取实例的方法，传参仍用 classArgs
+		"classArgs": [ // 构造方法的参数值，可以和 methodArgs 结构一样。这里用了简化形式，只传值不传类型，注意简化形式只能在所有值完全符合构造方法的类型定义时才可用
+			null,
+			null,
+			0,
+			null
+		],
+		"this": { // 当前类示例，和 constructor & classArgs 二选一
+			"type": "apijson.demo.server.model.User", // 不可缺省，且必须全称
+			"value": { // User 的示例值，会根据 type 来转为 Java 类型，这里执行等价于 JSON.parseObject(JSON.toJSONString(value), User.class)
+				"id": 1,
+				"name": "Tommy"
+			}
+		},
+		"method": "plus", // 被测方法名
+		"methodArgs": [ // 被测方法的参数值
+			{
+				"type": "Integer", // Boolean, Integer, Number, String, JSONObject, JSONArray 都可缺省，自动根据 value 来判断
+				"value": 1
+			},
+			{
+				"type": "String", // 可缺省，自动根据 value 来判断
+				"static": true // 是否静态
+				"field": "TAG" // 表示引用 class DemoFunctionParser 里的 static String TAG 的值作为这个传参
+			},
+			{
+				"type": "JSONObject", // 可缺省，JSONObject 已缓存到 CLASS_MAP，也可以写全称 com.alibaba.fastjson.JSONObject
+				"value": {}
+			},
+			{
+				"type": "int[]", // 不可缺省，且必须全称
+				"value": [1, 2, 3]
+			},
+			{
+				"type": "java.util.List<apijson.demo.server.model.User>", // 不可缺省，且必须全称
+				"value": [
+					{ // apijson.demo.server.model.User
+						"id": 1,
+						"name": "Tommy"
+					},
+					{ // apijson.demo.server.model.User
+						"id": 2,
+						"name": "Lemon"
+					}
+				]
+			},
+			{
+				"type": "android.content.Context", // 不可缺省，且必须全称
+				"reuse": true // 复用实例池 INSTANCE_MAP 里的
+			},
+			{
+				"type": "unitauto.test.TestUtil$Callback", // interface 示例，注意内部类用 $ 隔开外部类名和内部类名
+				"value": {
+					"setData(D)": { // 回调方法签名
+						"callback": true // 设置为最终回调方法，会自动等待它被调用，并自动记录回调的时间点和传入参数值
+					}
+				}
+			}
+		]
 	}
 	 * @param instance 默认自动 new，传非 null 值一般是因为 Spring 自动注入的 Service, Component, Mapper 等不能自己 new
 	 * @return
