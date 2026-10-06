@@ -105,7 +105,7 @@ public class MethodUtil {
 		 * @return
 		 * @throws Exception
 		 */
-		Object getInstance(@NotNull Class<?> clazz, List<Argument> classArgs, Boolean reuse) throws Exception;
+		Object getInstance(@NotNull Class<?> clazz, List<Argument> classArgs, String reuse, Boolean tri) throws Exception;
 
 		/**获取实例
 		 * @param clazz
@@ -113,8 +113,8 @@ public class MethodUtil {
 		 * @return
 		 * @throws Exception
 		 */
-		default Object getInstance(@NotNull Class<?> clazz, List<Argument> classArgs) throws Exception {
-			return getInstance(clazz, classArgs, null);
+		default Object getInstance(@NotNull Class<?> clazz, List<Argument> classArgs, Boolean tri) throws Exception {
+			return getInstance(clazz, classArgs, null, tri);
 		}
 
 		/**前置事件，准备依赖等
@@ -124,7 +124,7 @@ public class MethodUtil {
 		 * @return
 		 * @throws Exception
 		 */
-		default Boolean beforeGet(@NotNull Class<?> clazz, List<Argument> classArgs, Boolean reuse) throws Exception {
+		default Boolean beforeGet(@NotNull Class<?> clazz, List<Argument> classArgs, String reuse) throws Exception {
 			return null;
 		}
 
@@ -136,7 +136,7 @@ public class MethodUtil {
 		 * @return
 		 * @throws Exception
 		 */
-		default Object afterGet(Object instance, @NotNull Class<?> clazz, List<Argument> classArgs, Boolean reuse) throws Exception {
+		default Object afterGet(Object instance, @NotNull Class<?> clazz, List<Argument> classArgs, String reuse) throws Exception {
 			return instance;
 		}
 	}
@@ -209,6 +209,7 @@ public class MethodUtil {
 	public static int CODE_SERVER_ERROR = 500;
 	public static String MSG_SUCCESS = "success";
 
+	public static String KEY_TRY = "try";
 	public static String KEY_REUSE = "reuse";
 	public static String KEY_UI = "ui";
 	public static String KEY_TIME = "@time";
@@ -250,8 +251,8 @@ public class MethodUtil {
 	public static InstanceGetter INSTANCE_GETTER = new InstanceGetter() {
 
 		@Override
-		public Object getInstance(@NotNull Class<?> clazz, List<Argument> classArgs, Boolean reuse) throws Exception {
-			return getInvokeInstance(clazz, classArgs, reuse);
+		public Object getInstance(@NotNull Class<?> clazz, List<Argument> classArgs, String reuse, Boolean tri) throws Exception {
+			return getInvokeInstance(clazz, classArgs, reuse, tri);
 		}
 	};
 
@@ -295,6 +296,8 @@ public class MethodUtil {
 	public static Map<Class<?>, InterfaceProxy> GLOBAL_CALLBACK_MAP;
 	//  Map<class, <constructorArgs, instance>>
 	public static final Map<Class<?>, Map<Object, Object>> INSTANCE_MAP;
+	//public static final Map<Class<?>, Map<String, Object>> REUSE_MAP;
+
 	public static final Map<String, Class<?>> PRIMITIVE_CLASS_MAP;
 	public static final Map<String, Class<?>> BASE_CLASS_MAP;
 	public static final Map<String, Class<?>> CLASS_MAP;
@@ -303,6 +306,7 @@ public class MethodUtil {
 	static {
 		GLOBAL_CALLBACK_MAP = new HashMap<>();
 		INSTANCE_MAP = new HashMap<>();
+		//REUSE_MAP = new HashMap<>();
 
 		PRIMITIVE_CLASS_MAP = new HashMap<String, Class<?>>();
 		BASE_CLASS_MAP = new HashMap<String, Class<?>>();
@@ -555,17 +559,24 @@ public class MethodUtil {
 				JSONObject obj = new JSONObject();
 				obj.put(KEY_METHOD_ARGS, Arrays.asList(this_));
 				List<Argument> mArgs = getArgList(obj, KEY_METHOD_ARGS);
+				Argument mArg0 = mArgs.get(0);
+				Object v = mArg0 == null ? null : mArg0.getValue();
+				Object ins = cast(v == null ? instance : v, clazz);
 
-				Class<?>[] types = new Class<?>[1];
+				Class<?>[] types = new Class<?>[]{clazz};
 				Object[] args = new Object[1];
 
-				initTypesAndValues(mArgs, types, args, true, true);
-				instance = args[0];
+				initTypesAndValues(clazz, ins, mArgs, types, args, true, true);
+				Object ins2 = cast(args[0] == null ? ins : args[0], clazz);
+				if (ins2 != null || instance == null) { // || instance.getClass().isAssignableFrom(clazz) == false) {
+					instance = ins2;
+				}
 			}
 
 			if (instance == null && static_ == false) {
-				Boolean reuse = req.getBoolean(KEY_REUSE);
-				instance = getClassInstance(clazz, fldName, cttName, clsArgs, true, reuse);
+				String reuse = req.getString(KEY_REUSE);
+				Boolean tri = req.getBoolean(KEY_TRY);
+				instance = getClassInstance(clazz, instance, fldName, cttName, clsArgs, true, reuse, tri);
 			}
 
 			if (timeout < 0 || timeout > 60000) {
@@ -799,7 +810,7 @@ public class MethodUtil {
 	 * @return
 	 * @throws Exception
 	 */
-	public static Object getInvokeInstance(@NotNull Class<?> clazz, List<Argument> classArgs, Boolean reuse) throws Exception {
+	public static Object getInvokeInstance(@NotNull Class<?> clazz, List<Argument> classArgs, String reuse, Boolean tri) throws Exception {
 		Objects.requireNonNull(clazz);
 
 		//new 出实例
@@ -809,15 +820,52 @@ public class MethodUtil {
 			INSTANCE_MAP.put(clazz, clsMap);
 		}
 
-		String key = classArgs == null || classArgs.isEmpty() ? "" : JSON.toJSONString(classArgs);
-		Object instance = reuse != null && reuse ? clsMap.get(key) : null;  //必须精确对应值，否则去除缓存的和需要的很可能不符
+		String key = StringUtil.isEmpty(reuse, true) || "false".equals(reuse) ? null : ("true".equals(reuse) ? "" : reuse);
+		boolean isReuse = key != null;
+		Object instance = isReuse ? clsMap.get(key) : null;  //必须精确对应值，否则去除缓存的和需要的很可能不符
 
+		String key2 = classArgs == null || classArgs.isEmpty() ? "[]" : JSON.toJSONString(classArgs);
+		if (isReuse && instance == null) {
+			Object ins = clsMap.get(key2);  //必须精确对应值，否则去除缓存的和需要的很可能不符
+			if (key2.equals(key)) {
+				instance = ins;
+			} else if (ins != null) {
+				try {
+					instance = JSON.parseObject(JSON.toJSONString(ins), clazz);
+					instance = cast(instance, clazz);
+				} catch (Throwable e) {
+					e.printStackTrace();
+				}
+
+				if (instance != null) {
+					clsMap.put(key, instance);
+				}
+			}
+		}
+
+		boolean isTry = tri != null && tri;
 		if (instance == null) {
 			if (classArgs == null || classArgs.isEmpty()) {
 				if (clazz.isAnnotation()) {
 					return clazz;
 				}
-				instance = clazz.isEnum() ? getEnumInstance(clazz, null) : clazz.newInstance();
+				if (clazz.isEnum()) {
+					return getEnumInstance(clazz, null);
+				}
+				try {
+					instance = clazz.newInstance();
+				} catch (Throwable e) {
+					Constructor<?> constructor = isTry ? clazz.getDeclaredConstructor() : clazz.getConstructor();
+					if (isTry) {
+						try {
+							constructor.setAccessible(true);
+						} catch (Throwable e2) {
+							e.printStackTrace();
+						}
+					}
+
+					instance = constructor.newInstance();
+				}
 			} else if (clazz.isEnum()) {  //通过构造方法
 				Argument arg = classArgs.get(0);
 				String t = arg == null ? null : arg.getType();
@@ -846,27 +894,31 @@ public class MethodUtil {
 
 				Class<?>[] classArgTypes = new Class<?>[classArgs.size()];
 				Object[] classArgValues = new Object[classArgs.size()];
-				initTypesAndValues(classArgs, classArgTypes, classArgValues, exactConstructor);
+				initTypesAndValues(clazz, instance, classArgs, classArgTypes, classArgValues, exactConstructor);
 
 				if (exactConstructor) {  //指定某个构造方法
-					Constructor<?> constructor = clazz.getConstructor(classArgTypes);
-					try {
-						constructor.setAccessible(true);
-					} catch (Throwable e) {
-						e.printStackTrace();
+					Constructor<?> constructor = isTry ? clazz.getDeclaredConstructor(classArgTypes) : clazz.getConstructor(classArgTypes);
+					if (isTry) {
+						try {
+							constructor.setAccessible(true);
+						} catch (Throwable e) {
+							e.printStackTrace();
+						}
 					}
 
 					instance = constructor.newInstance(classArgValues);
 				} else {  //尝试参数数量一致的构造方法
-					Constructor<?>[] constructors = clazz.getConstructors();
+					Constructor<?>[] constructors = isTry ? clazz.getDeclaredConstructors() : clazz.getConstructors();
 					if (constructors != null) {
 						for (int i = 0; i < constructors.length; i++) {
 							Constructor<?> constructor = constructors[i];
 							if (constructor != null && constructor.getParameterCount() == classArgValues.length) {
-								try {
-									constructor.setAccessible(true);
-								} catch (Throwable e) {
-									e.printStackTrace();
+								if (isTry) {
+									try {
+										constructor.setAccessible(true);
+									} catch (Throwable e) {
+										e.printStackTrace();
+									}
 								}
 
 								try {
@@ -886,28 +938,35 @@ public class MethodUtil {
 				throw new NullPointerException("找不到 " + clazz.getName() + " 以及 classArgs 对应的构造方法！");
 			}
 
-			clsMap.put(key, instance);
+			if (key != null) {
+				clsMap.put(key, instance);
+			}
+
+			if (! key2.equals(key)) {
+				clsMap.put(key2, instance);
+			}
 		}
 
 		return instance;
 	}
 
-	public static Object getClassInstance(Class<?> clazz, String fldName, String cttName, List<Argument> clsArgs, Boolean isStatic, Boolean reuse) throws IllegalAccessException {
-		Object instance = null;
+	public static Object getClassInstance(Class<?> clazz, Object instance, String fldName, String cttName, List<Argument> clsArgs, Boolean isStatic, String reuse, Boolean tri) throws IllegalAccessException {
 		Throwable e = null;
-		try {
-			if (StringUtil.isEmpty(cttName, true)) {
-				Boolean b = INSTANCE_GETTER.beforeGet(clazz, clsArgs, reuse);
-				if (b == null || b == false) {
-					instance = INSTANCE_GETTER.getInstance(clazz, clsArgs, reuse);
+		if (instance == null) {
+			try {
+				if (StringUtil.isEmpty(cttName, true)) {
+					Boolean b = INSTANCE_GETTER.beforeGet(clazz, clsArgs, reuse);
+					if (b == null || b == false) {
+						instance = INSTANCE_GETTER.getInstance(clazz, clsArgs, reuse, tri);
+					}
+					instance = INSTANCE_GETTER.afterGet(instance, clazz, clsArgs, reuse);
+				} else {
+					instance = getInvokeResult(clazz, null, cttName, clsArgs, null, null);
 				}
-				instance = INSTANCE_GETTER.afterGet(instance, clazz, clsArgs, reuse);
-			} else {
-				instance = getInvokeResult(clazz, null, cttName, clsArgs, null, null);
+			} catch (Throwable e_) {
+				e = e_;
+				e_.printStackTrace();
 			}
-		} catch (Throwable e_) {
-			e = e_;
-			e_.printStackTrace();
 		}
 
 		Throwable e2 = null;
@@ -932,11 +991,11 @@ public class MethodUtil {
 					e2_.printStackTrace();
 				}
 
-				instance = f.get(isStatic != null && isStatic ? null : instance);
+				instance = f.get(instance); // isStatic != null && isStatic ? null : instance);
 			}
 		}
 
-		if (instance == null) {
+		if (instance == null && (e2 != null || e != null)) {
 			throw new IllegalArgumentException("Doesn't find a static method or field called " + cttName + "! "
 					+ e.getMessage() + (e2 == null ? "" : ". " + e2.getMessage()), e);
 		}
@@ -1004,7 +1063,7 @@ public class MethodUtil {
 		if (methodArgs != null && methodArgs.isEmpty() == false) {
 			types = new Class<?>[methodArgs.size()];
 			args = new Object[methodArgs.size()];
-			initTypesAndValues(methodArgs, types, args, true);
+			initTypesAndValues(clazz, null, methodArgs, types, args, true);
 		}
 
 		return clazz.getMethod(methodName, types);
@@ -1032,7 +1091,7 @@ public class MethodUtil {
 		Object[] args = isEmpty ? null : new Object[size];
 
 		if (isEmpty == false) {
-			initTypesAndValues(methodArgs, types, args, true, false);
+			initTypesAndValues(clazz, instance, methodArgs, types, args, true, false);
 		}
 
 		Method method = null;
@@ -1109,7 +1168,7 @@ public class MethodUtil {
 
 				if (value instanceof InterfaceProxy || (type != null && type.isInterface())) {  // @interface 也必须代理  && type.isAnnotation() == false)) {  //如果这里不行，就 initTypesAndValues 给个回调
 					try {  //不能交给 initTypesAndValues 中 castValue2Type，否则会导致这里 cast 抛异常
-						InterfaceProxy proxy = value instanceof InterfaceProxy ? ((InterfaceProxy) value) : cast(value, InterfaceProxy.class, ParserConfig.getGlobalInstance());
+						InterfaceProxy proxy = value instanceof InterfaceProxy ? ((InterfaceProxy) value) : cast(value, InterfaceProxy.class);
 						Set<Entry<String, Object>> set = proxy.entrySet();
 						if (set != null)  {
 							for (Entry<String, Object> e : set) {
@@ -1133,7 +1192,7 @@ public class MethodUtil {
 							GLOBAL_CALLBACK_MAP.put(clazz, proxy);
 						}
 
-						args[i] = cast(proxy, type, ParserConfig.getGlobalInstance());
+						args[i] = cast(proxy, type);
 						if (isSync) {
 							isSync = proxy.$_getCallbackMap().isEmpty();
 						}
@@ -1143,7 +1202,7 @@ public class MethodUtil {
 				}
 				//始终需要 cast	 else {  //前面 initTypesAndValues castValue2Type = false
 				try {
-					args[i] = cast(value, type, ParserConfig.getGlobalInstance());
+					args[i] = cast(value, type);
 				} catch (Throwable e) {
 					e.printStackTrace();
 				}
@@ -1341,16 +1400,16 @@ public class MethodUtil {
 	//		initTypesAndValues(methodArgs, types, args, false);
 	//	}
 
-	public static void initTypesAndValues(List<Argument> methodArgs, Class<?>[] types, Object[] args, boolean defaultType) throws Exception {
-		initTypesAndValues(methodArgs, types, args, defaultType, true);
+	public static void initTypesAndValues(Class<?> clazz, Object instance, List<Argument> methodArgs, Class<?>[] types, Object[] args, boolean defaultType) throws Exception {
+		initTypesAndValues(clazz, instance, methodArgs, types, args, defaultType, true);
 	}
 
-	public static void initTypesAndValues(List<Argument> methodArgs, Class<?>[] types, Object[] args, boolean defaultType
+	public static void initTypesAndValues(Class<?> clazz, Object instance, List<Argument> methodArgs, Class<?>[] types, Object[] args, boolean defaultType
 			, boolean castValue2Type) throws Exception {
-		initTypesAndValues(methodArgs, types, args, defaultType, castValue2Type, null);
+		initTypesAndValues(clazz, instance, methodArgs, types, args, defaultType, castValue2Type, null);
 	}
 
-	public static void initTypesAndValues(List<Argument> methodArgs, Class<?>[] types, Object[] args, boolean defaultType
+	public static void initTypesAndValues(Class<?> clazz, Object instance, List<Argument> methodArgs, Class<?>[] types, Object[] args, boolean defaultType
 			, boolean castValue2Type, Listener<Object> listener) throws Exception {
 		if (methodArgs == null || methodArgs.isEmpty()) {
 			return;
@@ -1370,7 +1429,7 @@ public class MethodUtil {
 
 			//			if (typeName != null && value != null && value.getClass().equals(CLASS_MAP.get(typeName)) == false) {
 			////				if ("double".equals(typeName)) {
-			//				value = cast(value, CLASS_MAP.get(typeName), ParserConfig.getGlobalInstance());
+			//				value = cast(value, CLASS_MAP.get(typeName));
 			////				}
 			////				else if (PRIMITIVE_CLASS_MAP.containsKey(typeName)) {
 			////					value = JSON.parse(JSON.toJSONString(value));
@@ -1383,11 +1442,13 @@ public class MethodUtil {
 
 			if (value == null && Boolean.TRUE.equals(argObj.getUndefined())) {
 				try {
-					Boolean reuse = argObj.getReuse();
+					Boolean static_ = argObj.getStatic();
+					String reuse = argObj.getReuse();
+					Boolean tri = argObj.getTry();
 					List<MethodUtil.Argument> clsArgs = argObj.getClassArgs();
-					String cttName = argObj.getConstructorName();
-					String fldName = argObj.getFieldName();
-					value = getClassInstance(type, fldName, cttName, clsArgs, argObj.getStatic(), reuse);
+					String cttName = argObj.getConstructor();
+					String fldName = argObj.getField();
+					value = getClassInstance(clazz, instance, fldName, cttName, clsArgs, static_, reuse, tri);
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
@@ -1415,7 +1476,7 @@ public class MethodUtil {
 
 				if (castValue2Type) {
 					try {
-						value = cast(value, type, ParserConfig.getGlobalInstance());
+						value = cast(value, type);
 					} catch (Throwable e) {
 						e.printStackTrace();
 					}
@@ -1719,7 +1780,7 @@ public class MethodUtil {
 				return null;
 			}
 
-			Object v = INSTANCE_GETTER.getInstance(type, null);
+			Object v = INSTANCE_GETTER.getInstance(type, null, true);
 			//				DEFAULT_TYPE_VALUE_MAP.put(c, v);
 
 			try {
@@ -2025,7 +2086,7 @@ public class MethodUtil {
 					i ++;
 					// type mismatch, 另外也不需要 Array.set(arr, i, item);
 					if (o != null) {
-						o = cast(o, ct, ParserConfig.getGlobalInstance());
+						o = cast(o, ct);
 					}
 					nc.add(o);
 				}
@@ -2053,7 +2114,7 @@ public class MethodUtil {
 				}
 			} else if (value != null && StringUtil.isEmpty(child, true) == false && "?".equals(child) == false && "Object".equals(child) == false && Collection.class.isAssignableFrom(type)) {
 				try {
-					// 传参进来必须是 Collection，不是就抛异常  value = cast(value, type, ParserConfig.getGlobalInstance());
+					// 传参进来必须是 Collection，不是就抛异常  value = cast(value, type);
 					Collection<?> c = (Collection<?>) value;
 					if (c != null && c.isEmpty() == false) {
 
@@ -2079,7 +2140,7 @@ public class MethodUtil {
 						for (Object o : c) {
 							if (o != null) {
 								Class<?> ct = getType(child, o, true);
-								o = cast(o, ct, ParserConfig.getGlobalInstance());
+								o = cast(o, ct);
 							}
 							nc.add(o);
 						}
@@ -2100,6 +2161,10 @@ public class MethodUtil {
 		}
 
 		return type;
+	}
+
+	public static <T> T cast(Object obj, Class<T> type) {
+		return cast(obj, type, null);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -2135,6 +2200,10 @@ public class MethodUtil {
 			}
 
 			return (T) nc;
+		}
+
+		if (config == null) {
+			config = ParserConfig.getGlobalInstance();
 		}
 
 		return TypeUtils.cast(obj, type, config);
@@ -2321,15 +2390,16 @@ public class MethodUtil {
 	/**参数，包括类型和值
 	 */
 	public static class Argument {
-		private Boolean reuse;
+		private String reuse;
 		private String type;
 		private Object value;
 		private Boolean undefined;
 		private Boolean global;
 
 		private Boolean static_;
-		private String fieldName;
-		private String constructorName;
+		private Boolean tri;
+		private String field;
+		private String constructor;
 		private List<Argument> classArgs;
 
 		public Argument() {
@@ -2341,11 +2411,11 @@ public class MethodUtil {
 		}
 
 
-		public Boolean getReuse() {
+		public String getReuse() {
 			return reuse;
 		}
 
-		public void setReuse(Boolean reuse) {
+		public void setReuse(String reuse) {
 			this.reuse = reuse;
 		}
 
@@ -2389,20 +2459,27 @@ public class MethodUtil {
 			this.static_ = static_;
 		}
 
-		public String getFieldName() {
-			return fieldName;
+		public Boolean getTry() {
+			return tri;
+		}
+		public void setTry(Boolean tri) {
+			this.tri = tri;
 		}
 
-		public void setFieldName(String fieldName) {
-			this.fieldName = fieldName;
+		public String getField() {
+			return field;
 		}
 
-		public String getConstructorName() {
-			return constructorName;
+		public void setField(String field) {
+			this.field = field;
 		}
 
-		public void setConstructorName(String constructorName) {
-			this.constructorName = constructorName;
+		public String getConstructor() {
+			return constructor;
+		}
+
+		public void setConstructor(String constructor) {
+			this.constructor = constructor;
 		}
 
 		public List<Argument> getClassArgs() {
@@ -2628,7 +2705,7 @@ public class MethodUtil {
 			}
 
 			try {
-				value = cast(value, getType(type, value, true), ParserConfig.getGlobalInstance());
+				value = cast(value, getType(type, value, true));
 			} catch (Throwable e) {
 				e.printStackTrace();
 				if (type == null) {
